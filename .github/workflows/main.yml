@@ -1,0 +1,68 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main  # Jalankan pipeline pada branch "main"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout kode aplikasi
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Setup Node.js untuk build/test aplikasi
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      # Install dependencies dan jalankan test
+      - name: Install dependencies
+        run: |
+          npm install
+          npm test  # Sesuaikan jika ada script test di package.json
+
+      # Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/my-devops-app:latest .
+
+      # Push Docker image ke DockerHub
+      - name: Push Docker image
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+          docker push $DOCKER_USERNAME/my-devops-app:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build  # Deploy setelah job "build" selesai
+
+    steps:
+      # Checkout kode aplikasi
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Setup kubectl untuk mengakses Kubernetes cluster
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      # Apply kubeconfig
+      - name: Set kubeconfig
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig
+          export KUBECONFIG=$PWD/kubeconfig
+
+      # Deploy aplikasi ke Kubernetes
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f kubernetes/deployment.yaml
+          kubectl apply -f kubernetes/service.yaml
